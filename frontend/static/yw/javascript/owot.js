@@ -71,7 +71,6 @@ var previousErase          = 0;
 var verticalEnterPos       = [0, 0]; // position to go when pressing enter (tileX, charX)
 var lastX                  = verticalEnterPos; // Deprecated; temp compat
 var imgPatterns            = {};
-var tileCanvasPool         = [];
 var textColorOverride      = 0; // public-member-owner bitfield
 var writeBuffer            = [];
 var highlightFlash         = {};

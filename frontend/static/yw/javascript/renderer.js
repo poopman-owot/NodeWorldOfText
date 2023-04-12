@@ -1,4 +1,5 @@
 var tilePixelCache = {};
+var tileCanvasPool = [];
 
 function createTilePool() {
 	var pCanv = document.createElement("canvas");
@@ -20,6 +21,7 @@ function createTilePool() {
 	tileCanvasPool.push(pool);
 	return pool;
 }
+
 
 function allocateTile() {
 	var pLocated = false;
@@ -86,7 +88,6 @@ function reallocateTile(obj) {
 
 function deletePool(pool) {
 	var canv = pool.canv;
-	canv.width = 0;
 	canv.height = 0;
 	delete pool.canv;
 	for(var t in pool.map) {
@@ -145,6 +146,14 @@ function removeAllTilesFromPools() {
 		deallocateTile(tilePixelCache[tile]);
 		delete tilePixelCache[tile];
 	}
+}
+
+function getPoolDimensions(tileWidth, tileHeight) {
+	var sizeX = Math.floor(1024 / tileWidth);
+	var sizeY = Math.floor(1024 / tileHeight);
+	if(sizeX < 1) sizeX = 1;
+	if(sizeY < 1) sizeY = 1;
+	return [sizeX, sizeY];
 }
 
 function getTileCoordsFromMouseCoords(x, y) {
@@ -693,7 +702,7 @@ function drawGrid(renderCtx, gridColor, offsetX, offsetY) {
 		}
 		b = Math.floor(b);
 		renderCtx.strokeStyle = "rgb(" + b + ", " + b + ", " + b + ")";
-		var dashSize = 1
+		var dashSize = 1;
 		renderCtx.setLineDash([dashSize]);
 		renderCtx.lineWidth = dashSize;
 		for(var x = 1; x < tileC; x++) {
@@ -1122,9 +1131,7 @@ function renderTilesSelective() {
 			if(tile.rerender) {
 				delete tile.rerender;
 				renderTile(x, y);
-				continue;
-			}
-			if(tile.redraw) {
+			} else if(tile.redraw) {
 				renderTile(x, y);
 			}
 		}
