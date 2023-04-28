@@ -5054,7 +5054,9 @@ Object.assign(w, {
 	setRedraw: function() {
 		for(var t in tiles) {
 			if(!tiles[t]) continue;
-			tiles[t].redraw = true;
+			//tiles[t].redraw = true;
+			var pos = getPos(t);
+			queueTile(pos[1], pos[0]);
 		}
 	},
 	setTileRedraw: function(tileX, tileY) {
