@@ -183,7 +183,7 @@ window.addEventListener("load", function() {
 
 document.addEventListener("visibilitychange", function() {
 	if(!document.hidden && zoom > 0.2) {
-		w.redraw();
+		//w.redraw();
 	}
 });
 
@@ -735,7 +735,8 @@ function doZoom(percentage) {
 	linkDiv.style.height = (cellH / zoomRatio) + "px";
 
 	// rerender everything
-	reloadRenderer();
+	//reloadRenderer();
+	w.render && w.render(true);
 }
 
 // set user zoom
@@ -4290,7 +4291,7 @@ function buildMenu() {
 		}, true);
 	}
 	var zoomBar = document.createElement("input");
-	zoomBar.onchange = function() {
+	zoomBar.oninput = function() {
 		var val = this.value;
 		val /= 100;
 		if(val < 0 || val > 1) val = 0.5;

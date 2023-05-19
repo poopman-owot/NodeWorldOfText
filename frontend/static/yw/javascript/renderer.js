@@ -30,10 +30,12 @@ function createTilePool() {
 		canv: pCanv,
 		ctx: pCtx,
 		map: pMap,
-		//maxWidth: pDims[0],
-		//maxHeight: pDims[1],
-		width: pDims[0],
-		height: pDims[1],
+		tileWidth: tileWidth,
+		tileHeight: tileHeight,
+		maxWidth: pDims[0],
+		maxHeight: pDims[1],
+		width: 1,
+		height: 1,
 		size: 0
 	};
 	tileCanvasPool.push(pool);
@@ -44,12 +46,42 @@ function createTilePool() {
 function allocateTile() {
 	var pLocated = false;
 	var pObj, pTilePos;
+	// scan for next available canvas pool
 	for(var i = 0; i < tileCanvasPool.length; i++) {
 		var pool = tileCanvasPool[i];
-		var area = pool.width * pool.height;
-		if(pool.size >= area) continue;
+		if(pool.tileWidth != tileWidth && pool.tileHeight != tileHeight) continue;
+		var maxArea = pool.maxWidth * pool.maxHeight;
+		if(pool.size >= maxArea) continue;
+		var currentArea = pool.width * pool.height;
+		if(pool.size >= currentArea) {
+			// expand canvas
+			if(pool.width < pool.maxWidth) {
+				pool.width *= 2;
+				if(pool.width > pool.maxWidth) {
+					pool.width = pool.maxWidth;
+				}
+			} else if(pool.height < pool.maxHeight) {
+				pool.height *= 2;
+				if(pool.height > pool.maxHeight) {
+					pool.height = pool.maxHeight;
+				}
+			}
+			currentArea = pool.width * pool.height;
+
+			var pCanv = document.createElement("canvas");
+			var pWidth = pool.width * tileWidth;
+			var pHeight = pool.height * tileHeight;
+			pCanv.width = pWidth;
+			pCanv.height = pHeight;
+			var pCtx = pCanv.getContext("2d");
+			pCtx.drawImage(pool.canv, 0, 0);
+
+			pool.canv.height = 0;
+			pool.canv = pCanv;
+			pool.ctx = pCtx;
+		}
 		var map = pool.map;
-		for(var t = 0; t < area; t++) {
+		for(var t = 0; t < currentArea; t++) {
 			if(map[t]) continue;
 			pLocated = true;
 			pObj = pool;
@@ -135,10 +167,13 @@ function deleteAllPools() {
 
 function loadTileFromPool(tileX, tileY, doNotCreate) {
 	var pos = tileY + "," + tileX;
-	if(tilePixelCache[pos]) {
-		return tilePixelCache[pos];
+	var poolTile = tilePixelCache[pos];
+	if(doNotCreate) {
+		return poolTile;
 	}
-	if(doNotCreate) return null;
+	if(poolTile && poolTile.pool.tileWidth == tileWidth && poolTile.pool.tileHeight == tileHeight) {
+		return poolTile;
+	}
 	var newTile = allocateTile();
 	tilePixelCache[pos] = newTile;
 	return newTile;
@@ -575,6 +610,8 @@ function dispatchCharClientHook(cCode, textRender, str, x, y, clampW, clampH) {
 	return false;
 }
 
+var avg  = 0;
+var ft = 0;
 function renderChar(textRender, x, y, clampW, clampH, str, tile, writability, props, offsetX, offsetY, charOverflowMode) {
 	var content = tile.content;
 	var colors = tile.properties.color;
@@ -705,9 +742,15 @@ function renderChar(textRender, x, y, clampW, clampH, str, tile, writability, pr
 			if(isItalic) tempFont = "italic " + tempFont;
 			textRender.font = tempFont;
 		}
-		var char = String.fromCodePoint(5000 + Math.floor(Math.random() * 20000));
-		textRender.fillStyle = "#000000"//"#" + Math.floor(Math.random() * 16777216).toString(16).toUpperCase()
+		//var char = String.fromCodePoint(32 + Math.floor(Math.random() * 64));
+		//textRender.fillStyle = "#" + (Math.floor(Math.floor(Math.random() * 16777000))).toString(16).padStart(6, 0).toUpperCase()
+		/*if(Math.random() > 0.5) {
+			textRender.fillStyle = "#000000"
+		}*/
+		//textRender.fillStyle = "#000000"
 		textRender.fillText(char, Math.round(fontX + XPadding), Math.round(fontY + textYOffset));
+		//textRender.fillRect(fontX, fontY, cellW, cellH / 2);
+		ft++;
 		if(prevFont) {
 			textRender.font = prevFont;
 		}
@@ -977,6 +1020,7 @@ function drawTile(tileX, tileY) {
 		renderCellBgColors(textRenderCtx, tileX, tileY, clampW, clampH);
 	}
 
+	//var a = performance.now();
 	if(!bufferLargeChars) {
 		renderContent(textRenderCtx, tileX, tileY, clampW, clampH, 0, 0);
 	} else {
@@ -985,9 +1029,11 @@ function drawTile(tileX, tileY) {
 		renderContent(textRenderCtx, tileX - 1, tileY + 1, clampW, clampH, clampW * -1, clampH * 1, [tileC - 1, 0, tileC - 1, 0], true); // bottom-left corner
 		renderContent(textRenderCtx, tileX, tileY + 1, clampW, clampH, 0, clampH * 1, [0, 0, tileC - 1, 0], true); // bottom
 	}
+	//var b = performance.now();
+	//avg += (b - a);
 
 	if(gridEnabled) {
-		drawGrid(textRenderCtx, gridColor, 0, 0);
+		drawGrid(textRenderCtx, "#000000", 0, 0);
 	}
 
 	poolCtx.clearRect(poolX, poolY, tileWidth, tileHeight);
@@ -1057,7 +1103,11 @@ function renderTile(tileX, tileY) {
 		var pCanv = tilePool.pool.canv;
 		var pX = tilePool.poolX;
 		var pY = tilePool.poolY;
-		owotCtx.drawImage(pCanv, pX, pY, clampW, clampH, offsetX, offsetY, clampW, clampH);
+		if(tilePool.pool.tileWidth == tileWidth && tilePool.pool.tileHeight == tileHeight) {
+			owotCtx.drawImage(pCanv, pX, pY, clampW, clampH, offsetX, offsetY, clampW, clampH);
+		} else {
+			owotCtx.drawImage(pCanv, pX, pY, tilePool.pool.tileWidth, tilePool.pool.tileHeight, offsetX, offsetY, clampW, clampH);
+		}
 		if(w.events.tilerendered) w.emit("tileRendered", {
 			tileX: tileX, tileY: tileY,
 			startX: offsetX, startY: offsetY,
@@ -1100,7 +1150,7 @@ function renderSpooler() {
 			break;
 		}
 		var d2 = performance.now();
-		if(d2 - d1 >= 50) break;
+		if(d2 - d1 >= 16) break;
 	}
 	requestAnimationFrame(renderSpooler);
 }
