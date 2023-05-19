@@ -174,6 +174,10 @@ function loadTileFromPool(tileX, tileY, doNotCreate) {
 	if(poolTile && poolTile.pool.tileWidth == tileWidth && poolTile.pool.tileHeight == tileHeight) {
 		return poolTile;
 	}
+	if(poolTile) {
+		deallocateTile(poolTile);
+		w.periodDeletedTiles++; // important for forcing cleanup
+	}
 	var newTile = allocateTile();
 	tilePixelCache[pos] = newTile;
 	return newTile;
@@ -182,7 +186,13 @@ function loadTileFromPool(tileX, tileY, doNotCreate) {
 function shiftAllTilesInPools() {
 	if(tileCanvasPool.length <= 1) return;
 	for(var tile in tilePixelCache) {
-		tilePixelCache[tile] = reallocateTile(tilePixelCache[tile]);
+		var tp = tilePixelCache[tile] ;
+		if(tp.pool.tileWidth == tileWidth && tp.pool.tileHeight == tileHeight) { // band-aid fix
+			tilePixelCache[tile] = reallocateTile(tp);
+		} else {
+			//deallocateTile(tp);
+			//w.periodDeletedTiles++; // important for forcing cleanup
+		}
 	}
 	deleteEmptyPools();
 }
@@ -1219,13 +1229,12 @@ function renderTilesSelective() {
 		for(var x = startX; x <= endX; x++) {
 			var tile = Tile.get(x, y);
 			if(!tile) continue;
-			renderTile(x, y);
-			/*if(tile.rerender) {
+			if(tile.rerender) {
 				delete tile.rerender;
 				renderTile(x, y);
 			} else if(tile.redraw) {
 				renderTile(x, y);
-			}*/
+			}
 		}
 	}
 }
