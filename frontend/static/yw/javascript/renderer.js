@@ -1,19 +1,16 @@
 var tilePixelCache = {};
 var tileCanvasPool = [];
-
-var renderQueue = []; // placeholder
+var renderQueue = [];
+var renderQueueMap = new Map();
 
 function isTileQueued(x, y) {
-	for(var i = 0; i < renderQueue.length; i++) {
-		var pos = renderQueue[i];
-		if(pos[0] == x && pos[1] == y) {
-			return true;
-		}
-	}
-	return false;
+	var pos = y + "," + x;
+	return renderQueueMap.has(pos);
 }
 function queueTile(x, y) {
 	if(isTileQueued(x, y)) return;
+	var pos = y + "," + x;
+	renderQueueMap.set(pos, true);
 	renderQueue.push([x, y]);
 }
 
@@ -165,6 +162,38 @@ function deleteAllPools() {
 	}
 }
 
+function countTotalPoolPixels() {
+	var pixels = 0;
+	for(var i = 0; i < tileCanvasPool.length; i++) {
+		var pool = tileCanvasPool[i];
+		pixels += pool.canv.width * pool.canv.height;
+	}
+	return pixels;
+}
+
+function cleanupDirtyTiles() {
+	for(var t in tilePixelCache) {
+		var pos = getPos(t);
+		var tileX = pos[1];
+		var tileY = pos[0];
+		var tilePool = loadTileFromPool(tileX, tileY, true);
+		if(!Tile.visible(tileX, tileY)) {
+			if(tilePool && (tilePool.pool.tileWidth != tileWidth || tilePool.pool.tileHeight != tileHeight)) {
+				removeTileFromPool(tileX, tileY);
+			}
+		}
+	}
+}
+
+function markTileFromPoolAsEmpty(tileX, tileY) {
+	var pos = tileY + "," + tileX;
+	var poolTile = tilePixelCache[pos];
+	if(poolTile) {
+		removeTileFromPool(tileX, tileY);
+	}
+	tilePixelCache[pos] = null;
+}
+
 function loadTileFromPool(tileX, tileY, doNotCreate) {
 	var pos = tileY + "," + tileX;
 	var poolTile = tilePixelCache[pos];
@@ -186,7 +215,8 @@ function loadTileFromPool(tileX, tileY, doNotCreate) {
 function shiftAllTilesInPools() {
 	if(tileCanvasPool.length <= 1) return;
 	for(var tile in tilePixelCache) {
-		var tp = tilePixelCache[tile] ;
+		var tp = tilePixelCache[tile];
+		if(tp == null) continue;
 		if(tp.pool.tileWidth == tileWidth && tp.pool.tileHeight == tileHeight) {
 			tilePixelCache[tile] = reallocateTile(tp);
 		}
@@ -196,9 +226,10 @@ function shiftAllTilesInPools() {
 
 function removeTileFromPool(tileX, tileY) {
 	var pos = tileY + "," + tileX;
-	if(!tilePixelCache[pos]) return;
-	deallocateTile(tilePixelCache[pos]);
+	var tileObj = tilePixelCache[pos];
 	delete tilePixelCache[pos];
+	if(!tileObj) return;
+	deallocateTile(tileObj);
 	w.periodDeletedTiles++;
 }
 
@@ -618,8 +649,6 @@ function dispatchCharClientHook(cCode, textRender, str, x, y, clampW, clampH) {
 	return false;
 }
 
-var avg  = 0;
-var ft = 0;
 function renderChar(textRender, x, y, clampW, clampH, str, tile, writability, props, offsetX, offsetY, charOverflowMode) {
 	var content = tile.content;
 	var colors = tile.properties.color;
@@ -713,7 +742,7 @@ function renderChar(textRender, x, y, clampW, clampH, str, tile, writability, pr
 	}
 
 	// don't render whitespaces
-	//if(char == "\u0020" || char == "\u00A0") return;
+	if(char == "\u0020" || char == "\u00A0") return;
 
 	if(!surrogateCharsEnabled || !combiningCharsEnabled) {
 		char = w.split(char, !surrogateCharsEnabled, !combiningCharsEnabled);
@@ -750,15 +779,7 @@ function renderChar(textRender, x, y, clampW, clampH, str, tile, writability, pr
 			if(isItalic) tempFont = "italic " + tempFont;
 			textRender.font = tempFont;
 		}
-		//var char = String.fromCodePoint(32 + Math.floor(Math.random() * 64));
-		//textRender.fillStyle = "#" + (Math.floor(Math.floor(Math.random() * 16777000))).toString(16).padStart(6, 0).toUpperCase()
-		/*if(Math.random() > 0.5) {
-			textRender.fillStyle = "#000000"
-		}*/
-		//textRender.fillStyle = "#000000"
 		textRender.fillText(char, Math.round(fontX + XPadding), Math.round(fontY + textYOffset));
-		//textRender.fillRect(fontX, fontY, cellW, cellH / 2);
-		ft++;
 		if(prevFont) {
 			textRender.font = prevFont;
 		}
@@ -805,18 +826,20 @@ function drawObstructedCursor(renderCtx, content, curX, curY, offsetX, offsetY) 
 	}
 }
 
-function renderTileBackground(renderCtx, offsetX, offsetY, tile, tileX, tileY, cursorVisibility) {
-	var computed_writability = tile.properties.writability;
-	if(computed_writability == null) computed_writability = state.worldModel.writability;
+function getTileBackgroundColor(tile) {
+	var writability = tile.properties.writability;
+	if(writability == null) writability = state.worldModel.writability;
 	
-	if(!tile.backgroundColor) {
-		if(computed_writability == 0) renderCtx.fillStyle = styles.public;
-		if(computed_writability == 1) renderCtx.fillStyle = styles.member;
-		if(computed_writability == 2) renderCtx.fillStyle = styles.owner;
-	} else {
-		renderCtx.fillStyle = tile.backgroundColor;
+	if(tile.backgroundColor) {
+		return tile.backgroundColor;
 	}
-	var backColor = renderCtx.fillStyle;
+	if(writability == 0) return styles.public;
+	if(writability == 1) return styles.member;
+	if(writability == 2) return styles.owner;
+}
+
+function renderTileBackground(renderCtx, offsetX, offsetY, tile, tileX, tileY, cursorVisibility) {
+	renderCtx.fillStyle = getTileBackgroundColor(tile);
 
 	var clamp, clampW, clampH;
 	if(transparentBackground) {
@@ -885,7 +908,6 @@ function renderTileBackground(renderCtx, offsetX, offsetY, tile, tileX, tileY, c
 			}
 		}
 	}
-	return backColor;
 }
 
 function renderTileBackgroundImage(renderCtx, tileX, tileY, ctxOffX, ctxOffY) {
@@ -1001,15 +1023,69 @@ function renderCellBgColors(textRenderCtx, tileX, tileY, clampW, clampH) {
 	}
 }
 
+function isTileVisiblyEmpty(tileX, tileY) {
+	if(gridEnabled) return false;
+	var tile = Tile.get(tileX, tileY);
+	var pos = tileY + "," + tileX;
+	if(highlightFlash[pos]) return false;
+	if(coloredChars[pos]) return false;
+
+	for(var i = 0; i < tile.content.length; i++) {
+		if(tile.content[i] != "\u00A0" && tile.content[i] != "\u0020") {
+			return false;
+		}
+	}
+	if(tile.properties.color) {
+		for(var i = 0; i < tile.properties.color.length; i++) {
+			if(tile.properties.color[i] != 0) {
+				return false;
+			}
+		}
+	}
+	if(tile.properties.bgcolor) {
+		for(var i = 0; i < tile.properties.bgcolor.length; i++) {
+			if(tile.properties.color[i] != -1) {
+				return false;
+			}
+		}
+	}
+	if(tile.properties.char) {
+		for(var i = 0; i < tile.properties.char.length; i++) {
+			if(tile.properties.char[i] != null) {
+				return false;
+			}
+		}
+	}
+	if(tile.properties.cell_props) {
+		if(Object.keys(tile.properties.cell_props) > 0) {
+			return false;
+		}
+	}
+	if(!transparentBackground) {
+		if(tile.properties.writability != null) {
+			return false;
+		}
+		if(cursorCoords && cursorCoords[0] == tileX && cursorCoords[1] == tileY) {
+			return false;
+		}
+	}
+	return true;
+}
+
 function drawTile(tileX, tileY) {
+	var tile = Tile.get(tileX, tileY);
+	if(!tile) return;
+
+	if(isTileVisiblyEmpty(tileX, tileY)) {
+		markTileFromPoolAsEmpty(tileX, tileY);
+		return;
+	}
+
 	var tileImage = loadTileFromPool(tileX, tileY);
 	var poolCtx = tileImage.pool.ctx;
 	var poolCanv = tileImage.pool.canv;
 	var poolX = tileImage.poolX;
 	var poolY = tileImage.poolY;
-
-	var tile = Tile.get(tileX, tileY);
-	if(!tile) return;
 
 	var clampW = tileWidth;
 	var clampH = tileHeight;
@@ -1017,6 +1093,7 @@ function drawTile(tileX, tileY) {
 	if(transparentBackground) {
 		textRenderCtx.clearRect(0, 0, textRenderCanvas.width, textRenderCanvas.width);
 	} else {
+		var cursorVisibility = cursorRenderingEnabled && cursorCoords && cursorCoords[0] == tileX && cursorCoords[1] == tileY;
 		renderTileBackground(textRenderCtx, 0, 0, tile, tileX, tileY, cursorVisibility);
 	}
 
@@ -1028,7 +1105,6 @@ function drawTile(tileX, tileY) {
 		renderCellBgColors(textRenderCtx, tileX, tileY, clampW, clampH);
 	}
 
-	//var a = performance.now();
 	if(!bufferLargeChars) {
 		renderContent(textRenderCtx, tileX, tileY, clampW, clampH, 0, 0);
 	} else {
@@ -1037,11 +1113,10 @@ function drawTile(tileX, tileY) {
 		renderContent(textRenderCtx, tileX - 1, tileY + 1, clampW, clampH, clampW * -1, clampH * 1, [tileC - 1, 0, tileC - 1, 0], true); // bottom-left corner
 		renderContent(textRenderCtx, tileX, tileY + 1, clampW, clampH, 0, clampH * 1, [0, 0, tileC - 1, 0], true); // bottom
 	}
-	//var b = performance.now();
-	//avg += (b - a);
 
 	if(gridEnabled) {
-		drawGrid(textRenderCtx, "#000000", 0, 0);
+		var gridColor = int_to_hexcode(0xFFFFFF - resolveColorValue(getTileBackgroundColor(tile)));
+		drawGrid(textRenderCtx, gridColor, 0, 0);
 	}
 
 	poolCtx.clearRect(poolX, poolY, tileWidth, tileHeight);
@@ -1064,9 +1139,6 @@ function renderTile(tileX, tileY) {
 	var offsetY = Math.floor(tileScreenPos[1]);
 
 	var tile = Tile.get(tileX, tileY);
-	/*if(redraw) {
-		tile.redraw = true;
-	}*/
 
 	if(!Tile.visible(tileX, tileY)) return;
 
@@ -1076,14 +1148,10 @@ function renderTile(tileX, tileY) {
 
 	var cursorVisibility = cursorRenderingEnabled && cursorCoords && cursorCoords[0] == tileX && cursorCoords[1] == tileY;
 
-	var gridColor = "#000000";
 	if(transparentBackground) {
-		var backColor = renderTileBackground(owotCtx, offsetX, offsetY, tile, tileX, tileY, cursorVisibility);
-		if(gridEnabled) {
-			gridColor = int_to_hexcode(0xFFFFFF - resolveColorValue(backColor));
-		}
+		renderTileBackground(owotCtx, offsetX, offsetY, tile, tileX, tileY, cursorVisibility);
 	} else {
-		/*var backgroundUpdated = false;
+		var backgroundUpdated = false;
 		var hasHighlightFlash = highlightFlash[tileY + "," + tileX];
 		if(hasHighlightFlash) {
 			backgroundUpdated = true;
@@ -1102,11 +1170,9 @@ function renderTile(tileX, tileY) {
 			delete tile.tp_cursor;
 		}
 		if(backgroundUpdated) {
-			redraw = true;
-		}*/
+			tile.redraw = true;
+		}
 	}
-
-	// render text data from cache
 
 	if(tile.redraw) {
 		tile.redraw = false;
@@ -1116,8 +1182,8 @@ function renderTile(tileX, tileY) {
 	}
 
 	var tilePool = loadTileFromPool(tileX, tileY, true);
-
 	if(tilePool) {
+		// render text data from cache
 		var pCanv = tilePool.pool.canv;
 		var pX = tilePool.poolX;
 		var pY = tilePool.poolY;
@@ -1126,11 +1192,6 @@ function renderTile(tileX, tileY) {
 		} else {
 			owotCtx.drawImage(pCanv, pX, pY, tilePool.pool.tileWidth, tilePool.pool.tileHeight, offsetX, offsetY, clampW, clampH);
 		}
-		if(w.events.tilerendered) w.emit("tileRendered", {
-			tileX: tileX, tileY: tileY,
-			startX: offsetX, startY: offsetY,
-			endX: offsetX + clampW - 1, endY: offsetY + clampH - 1
-		});
 		if(cursorRenderingEnabled && cursorCoords && cursorCoords[0] == tileX && cursorCoords[1] == tileY) {
 			if(unobstructCursor) {
 				drawObstructedCursor(owotCtx, tile.content, cursorCoords[2], cursorCoords[3], offsetX, offsetY);
@@ -1140,47 +1201,49 @@ function renderTile(tileX, tileY) {
 			}
 		}
 	} else {
-		if(!isTileQueued(tileX, tileY)) {
+		var isEmpty = tilePool === null;
+		if(!isTileQueued(tileX, tileY) && !isEmpty) {
 			queueTile(tileX, tileY);
 		}
-		owotCtx.fillStyle = "#C0C0C0";
-		owotCtx.fillRect(offsetX, offsetY, clampW, clampH);
+		if(isEmpty) {
+			if(!transparentBackground) {
+				owotCtx.fillStyle = styles.public;
+				owotCtx.fillRect(offsetX, offsetY, clampW, clampH);
+			}
+		} else {
+			if(transparentBackground) {
+				clearTile(tileX, tileY);
+			}
+		}
 	}
 
-	/*if(w.events.tilerendered) w.emit("tileRendered", {
+	if(w.events.tilerendered) w.emit("tileRendered", {
 		tileX: tileX, tileY: tileY,
 		startX: offsetX, startY: offsetY,
 		endX: offsetX + clampW - 1, endY: offsetY + clampH - 1
-	});*/
+	});
 }
 
-function renderSpooler() {
-	var d1 = performance.now();
+function renderNextTilesInQueue() {
+	var start = performance.now();
 	var rq = renderQueue.length;
 	for(var i = 0; i < rq; i++) {
 		var tile = renderQueue.shift();
 		if(tile) {
 			var tileX = tile[0];
 			var tileY = tile[1];
-
-			var tilePool = loadTileFromPool(tileX, tileY, true);
-			if(!Tile.visible(tileX, tileY)) {
-				if(tilePool && (tilePool.pool.tileWidth != tileWidth || tilePool.pool.tileHeight != tileHeight)) {
-					removeTileFromPool(tileX, tileY);
-				}
-			} else {
+			renderQueueMap.delete(tileY + "," + tileX);
+			if(Tile.visible(tileX, tileY)) {
 				drawTile(tileX, tileY);
 				renderTile(tileX, tileY);
 			}
 		} else {
 			break;
 		}
-		var d2 = performance.now();
-		if(d2 - d1 >= 16) break;
+		var end = performance.now();
+		if(end - start >= 16) break;
 	}
-	requestAnimationFrame(renderSpooler);
 }
-renderSpooler();
 
 function renderTiles(redraw) {
 	w.emit("beforeTilesRendered");

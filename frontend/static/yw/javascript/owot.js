@@ -181,12 +181,6 @@ window.addEventListener("load", function() {
 	w.emit("clientLoaded");
 });
 
-document.addEventListener("visibilitychange", function() {
-	if(!document.hidden && zoom > 0.2) {
-		//w.redraw();
-	}
-});
-
 defineElements({ // elm[<name>]
 	loading: byId("loading"),
 	coord_Y: byId("coord_Y"),
@@ -735,9 +729,7 @@ function doZoom(percentage) {
 	linkDiv.style.height = (cellH / zoomRatio) + "px";
 
 	// rerender everything
-	//reloadRenderer();
-	w.render && w.render(true);
-	deleteEmptyPools();
+	w.render(true);
 }
 
 // set user zoom
@@ -753,7 +745,13 @@ function changeZoom(percentage) {
 	positionX = Math.trunc(positionX); // remove decimals
 	positionY = Math.trunc(positionY);
 	w.render();
+
+	// cleanup
 	setZoombarValue();
+	if(tileCanvasPool.length > 100 || countTotalPoolPixels() > 10000000) {
+		cleanupDirtyTiles();
+	}
+	deleteEmptyPools();
 }
 
 function setZoombarValue() {
@@ -1175,8 +1173,6 @@ function event_resize() {
 	w.render();
 }
 window.addEventListener("resize", event_resize);
-
-browserZoomAdjust(true);
 
 function getChar(tileX, tileY, charX, charY) {
 	if(tileX == void 0 && tileY == void 0 && charX == void 0 && charY == void 0) {
@@ -4026,6 +4022,7 @@ function renderLoop() {
 	w.hasSelectiveUpdated = false;
 	w.emit("frame"); // emitted after update flags are reset
 	if(!writeBuffer.length) sendCursorPosition();
+	renderNextTilesInQueue();
 	requestAnimationFrame(renderLoop);
 }
 
@@ -5054,11 +5051,16 @@ Object.assign(w, {
 		reloadRenderer();
 	},
 	setRedraw: function() {
-		for(var t in tiles) {
-			if(!tiles[t]) continue;
-			tiles[t].redraw = true;
+		for(var t in tilePixelCache) {
+			if(tiles[t]) {
+				tiles[t].redraw = true;
+			}
 			var pos = getPos(t);
-			queueTile(pos[1], pos[0]);
+			var tileX = pos[1];
+			var tileY = pos[0];
+			if(isTileVisible(tileX, tileY)) {
+				queueTile(tileX, tileY);
+			}
 		}
 	},
 	setTileRedraw: function(tileX, tileY) {
@@ -6240,6 +6242,8 @@ function begin() {
 
 	w.fetchUnloadedTiles();
 	w.fixFonts("legacycomputing");
+
+	browserZoomAdjust(true);
 
 	manageCoordHash();
 	getWorldProps(state.worldModel.name, "style", function(style, error) {
