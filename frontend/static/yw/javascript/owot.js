@@ -5057,18 +5057,8 @@ Object.assign(w, {
 		for(var t in tiles) {
 			if(!tiles[t]) continue;
 			tiles[t].redraw = true;
-		}
-		var visibleRange = getVisibleTileRange(1.0);
-		var startX = visibleRange[0][0];
-		var startY = visibleRange[0][1];
-		var endX = visibleRange[1][0];
-		var endY = visibleRange[1][1];
-		for(var y = startY; y <= endY; y++) {
-			for(var x = startX; x <= endX; x++) {
-				var tile = Tile.get(x, y);
-				if(!tile) continue;
-				queueTile(x, y);
-			}
+			var pos = getPos(t);
+			queueTile(pos[1], pos[0]);
 		}
 	},
 	setTileRedraw: function(tileX, tileY) {

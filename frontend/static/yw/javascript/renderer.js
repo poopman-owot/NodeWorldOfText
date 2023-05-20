@@ -187,11 +187,8 @@ function shiftAllTilesInPools() {
 	if(tileCanvasPool.length <= 1) return;
 	for(var tile in tilePixelCache) {
 		var tp = tilePixelCache[tile] ;
-		if(tp.pool.tileWidth == tileWidth && tp.pool.tileHeight == tileHeight) { // band-aid fix
+		if(tp.pool.tileWidth == tileWidth && tp.pool.tileHeight == tileHeight) {
 			tilePixelCache[tile] = reallocateTile(tp);
-		} else {
-			//deallocateTile(tp);
-			//w.periodDeletedTiles++; // important for forcing cleanup
 		}
 	}
 	deleteEmptyPools();
@@ -202,6 +199,7 @@ function removeTileFromPool(tileX, tileY) {
 	if(!tilePixelCache[pos]) return;
 	deallocateTile(tilePixelCache[pos]);
 	delete tilePixelCache[pos];
+	w.periodDeletedTiles++;
 }
 
 function removeAllTilesFromPools() {
@@ -1069,6 +1067,7 @@ function renderTile(tileX, tileY) {
 	/*if(redraw) {
 		tile.redraw = true;
 	}*/
+
 	if(!Tile.visible(tileX, tileY)) return;
 
 	var clamp = getTileScreenPosition(tileX + 1, tileY + 1);
@@ -1108,7 +1107,16 @@ function renderTile(tileX, tileY) {
 	}
 
 	// render text data from cache
+
+	if(tile.redraw) {
+		tile.redraw = false;
+		if(!isTileQueued(tileX, tileY)) {
+			queueTile(tileX, tileY);
+		}
+	}
+
 	var tilePool = loadTileFromPool(tileX, tileY, true);
+
 	if(tilePool) {
 		var pCanv = tilePool.pool.canv;
 		var pX = tilePool.poolX;
@@ -1154,8 +1162,16 @@ function renderSpooler() {
 		if(tile) {
 			var tileX = tile[0];
 			var tileY = tile[1];
-			drawTile(tileX, tileY);
-			renderTile(tileX, tileY);
+
+			var tilePool = loadTileFromPool(tileX, tileY, true);
+			if(!Tile.visible(tileX, tileY)) {
+				if(tilePool && (tilePool.pool.tileWidth != tileWidth || tilePool.pool.tileHeight != tileHeight)) {
+					removeTileFromPool(tileX, tileY);
+				}
+			} else {
+				drawTile(tileX, tileY);
+				renderTile(tileX, tileY);
+			}
 		} else {
 			break;
 		}
