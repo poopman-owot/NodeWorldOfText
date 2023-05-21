@@ -46,7 +46,7 @@ function allocateTile() {
 	// scan for next available canvas pool
 	for(var i = 0; i < tileCanvasPool.length; i++) {
 		var pool = tileCanvasPool[i];
-		if(pool.tileWidth != tileWidth && pool.tileHeight != tileHeight) continue;
+		if(pool.tileWidth != tileWidth || pool.tileHeight != tileHeight) continue;
 		var maxArea = pool.maxWidth * pool.maxHeight;
 		if(pool.size >= maxArea) continue;
 		var currentArea = pool.width * pool.height;
@@ -1057,12 +1057,15 @@ function isTileVisiblyEmpty(tileX, tileY) {
 		}
 	}
 	if(tile.properties.cell_props) {
-		if(Object.keys(tile.properties.cell_props) > 0) {
+		if(Object.keys(tile.properties.cell_props).length > 0) {
 			return false;
 		}
 	}
 	if(!transparentBackground) {
 		if(tile.properties.writability != null) {
+			return false;
+		}
+		if(tile.backgroundColor) {
 			return false;
 		}
 		if(cursorCoords && cursorCoords[0] == tileX && cursorCoords[1] == tileY) {
