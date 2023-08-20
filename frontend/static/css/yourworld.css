@@ -230,7 +230,7 @@ a:visited {
 }
 .chatfield {
 	border: solid 1px black;
-	background-color: white;
+	background-color: #000;
 	overflow: scroll;
 	overflow-x: hidden;
 	overflow-wrap: break-word;
@@ -270,7 +270,8 @@ a:visited {
 }
 #chat_window {
 	position: absolute;
-	background-color: #e0e0e0;
+	background-color: #484848;
+	color: #e87e0d;
 	display: flex;
 	flex-flow: column;
 	width: 100%;
