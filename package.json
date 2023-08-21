@@ -10,9 +10,9 @@
 		"ws": "^8.12.1"
 	},
 	"scripts": {
-		"start": "node main.js",
+		"start": "node --experimental-worker main.js; node main.js",
 		"tst": "node --expose-gc main.js --test-server",
-		"dbg": "node --trace-warnings --stack-trace-limit=1024 --expose-gc main.js --test-server"
+		"dbg": "node --trace-warnings --stack-trace-limit=1024 --expose-gc main.js --test-server",
 	},
 	"private": true
 }
